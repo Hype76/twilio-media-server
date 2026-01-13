@@ -26,7 +26,7 @@ app.post("/twilio/voice", (req, res) => {
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${streamUrl}" />
+    <Stream url="${streamUrl}" track="both" />
   </Connect>
 
   <Gather input="speech" speechTimeout="auto" timeout="60">
