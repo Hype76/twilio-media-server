@@ -28,11 +28,15 @@ app.post("/twilio/voice", (req, res) => {
   <Connect>
     <Stream url="${streamUrl}" />
   </Connect>
+
+  <!-- KEEP THE CALL OPEN -->
+  <Pause length="60" />
 </Response>`;
 
   res.set("Content-Type", "text/xml");
   res.status(200).send(twiml);
 });
+
 
 /* -------------------- WEBSOCKET -------------------- */
 const wss = new WebSocketServer({ server, path: "/media" });
