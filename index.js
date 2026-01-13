@@ -5,51 +5,65 @@ import { Readable } from "node:stream";
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
 const server = http.createServer(app);
 
+/**
+ * ENV (Railway variables on MEDIA SERVER service)
+ */
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
 const ELEVENLABS_MODEL_ID =
   process.env.ELEVENLABS_MODEL_ID || "eleven_monolingual_v1";
 
-/* -------------------- HEALTH -------------------- */
-app.get("/health", (_req, res) => res.status(200).send("ok"));
+/**
+ * HEALTH
+ */
+app.get("/health", (_req, res) => {
+  res.status(200).send("ok");
+});
 
-/* -------------------- TWILIO VOICE WEBHOOK -------------------- */
-app.post("/twilio/voice", (req, res) => {
+/**
+ * Twilio Voice Webhook
+ * IMPORTANT:
+ * - MUST accept GET AND POST
+ * - MUST return TwiML
+ */
+app.all("/twilio/voice", (req, res) => {
   const host = req.get("host");
   const proto = req.get("x-forwarded-proto") || "https";
   const wsProto = proto === "https" ? "wss" : "ws";
+
   const streamUrl = `${wsProto}://${host}/media`;
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${streamUrl}" track="both" />
+    <Stream url="${streamUrl}" track="both"/>
   </Connect>
-
-  <Gather input="speech" speechTimeout="auto" timeout="60">
-    <Pause length="60"/>
-  </Gather>
 </Response>`;
 
-  res.type("text/xml").send(twiml);
+  res.set("Content-Type", "text/xml");
+  res.status(200).send(twiml);
 });
 
+/**
+ * Guard against HTTP hits on /media
+ */
+app.get("/media", (_req, res) => {
+  res.status(426).send("WebSocket required");
+});
 
-
-/* -------------------- WEBSOCKET -------------------- */
+/**
+ * WebSocket Media Stream
+ */
 const wss = new WebSocketServer({ server, path: "/media" });
 
 wss.on("connection", (ws) => {
   console.log("Twilio media stream connected");
 
   let streamSid = null;
-  let callActive = true;
-  let speaking = false;
-  let lastAudioAt = null;
-  let silenceTimer = null;
 
   ws.on("message", async (msg) => {
     let data;
@@ -63,53 +77,25 @@ wss.on("connection", (ws) => {
       streamSid = data.start.streamSid;
       console.log("Stream started:", streamSid);
 
-      await speak(ws, streamSid, "Hello. I can hear you now.");
-      return;
-    }
-
-    if (data.event === "media") {
-      if (speaking) return;
-
-      lastAudioAt = Date.now();
-
-      if (silenceTimer) clearTimeout(silenceTimer);
-
-      silenceTimer = setTimeout(async () => {
-        if (!callActive || speaking) return;
-
-        speaking = true;
-        console.log("Detected silence, echoing");
-
-        try {
-          await speak(ws, streamSid, "You said something. I am listening.");
-        } catch (e) {
-          console.error("Speak failed:", e);
-        }
-
-        speaking = false;
-      }, 500);
-
+      await speakToTwilio(ws, streamSid, "Hello. I can hear you now.");
       return;
     }
 
     if (data.event === "stop") {
-      callActive = false;
       console.log("Stream stopped");
       return;
     }
   });
 
   ws.on("close", () => {
-    callActive = false;
     console.log("Twilio disconnected");
   });
 });
 
-/* -------------------- SPEAK -------------------- */
-async function speak(ws, streamSid, text) {
-  if (!streamSid) return;
-  if (ws.readyState !== ws.OPEN) return;
-
+/**
+ * ElevenLabs → Twilio (PCMU / 8k)
+ */
+async function speakToTwilio(ws, streamSid, text) {
   console.log("Speaking:", text);
 
   const url =
@@ -130,17 +116,14 @@ async function speak(ws, streamSid, text) {
 
   const nodeStream = Readable.fromWeb(resp.body);
 
-  const FRAME_BYTES = 160;
+  const FRAME = 160;
   let buffer = Buffer.alloc(0);
 
   for await (const chunk of nodeStream) {
-    if (ws.readyState !== ws.OPEN) break;
-
     buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
-
-    while (buffer.length >= FRAME_BYTES) {
-      const frame = buffer.subarray(0, FRAME_BYTES);
-      buffer = buffer.subarray(FRAME_BYTES);
+    while (buffer.length >= FRAME) {
+      const frame = buffer.subarray(0, FRAME);
+      buffer = buffer.subarray(FRAME);
 
       ws.send(
         JSON.stringify({
@@ -153,7 +136,9 @@ async function speak(ws, streamSid, text) {
   }
 }
 
-/* -------------------- SERVER -------------------- */
+/**
+ * START
+ */
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log("Listening on port", PORT);
