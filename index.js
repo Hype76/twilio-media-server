@@ -25,10 +25,12 @@ const server = http.createServer(app);
 /**
  * HEALTH
  */
-app.get("/health", (_req, res) => res.status(200).send("ok"));
+app.get("/health", (_req, res) => {
+  res.status(200).send("ok");
+});
 
 /**
- * STREAM STATUS CALLBACK (Twilio hits this if Stream fails/starts/stops)
+ * STREAM STATUS CALLBACK
  */
 app.post("/twilio/stream-status", (req, res) => {
   console.log("[STREAM-STATUS] body:", req.body);
@@ -36,7 +38,7 @@ app.post("/twilio/stream-status", (req, res) => {
 });
 
 /**
- * CALL STATUS CALLBACK (optional, set in Twilio number config)
+ * CALL STATUS CALLBACK (optional)
  */
 app.post("/twilio/call-status", (req, res) => {
   console.log("[CALL-STATUS] body:", req.body);
@@ -44,7 +46,7 @@ app.post("/twilio/call-status", (req, res) => {
 });
 
 /**
- * TWILIO VOICE WEBHOOK
+ * BUILD TWIML
  */
 function buildTwiml(req) {
   const host = req.get("host");
@@ -57,22 +59,29 @@ function buildTwiml(req) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${streamUrl}"
-            track="inbound"
-            statusCallback="${statusCb}"
-            statusCallbackMethod="POST" />
+    <Stream
+      url="${streamUrl}"
+      track="both"
+      statusCallback="${statusCb}"
+      statusCallbackMethod="POST" />
   </Connect>
 </Response>`;
 }
 
+/**
+ * TWILIO VOICE WEBHOOK
+ */
 app.post("/twilio/voice", (req, res) => {
   try {
     const twiml = buildTwiml(req);
     console.log("[TwiML] returning:", twiml);
     res.type("text/xml").status(200).send(twiml);
-  } catch (e) {
-    console.error("[/twilio/voice] failed:", e?.message || e);
-    res.status(200).type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+  } catch (err) {
+    console.error("[/twilio/voice] failed:", err?.message || err);
+    res
+      .status(200)
+      .type("text/xml")
+      .send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
   }
 });
 
@@ -80,7 +89,7 @@ app.get("/twilio/voice", (req, res) => {
   try {
     const twiml = buildTwiml(req);
     res.type("text/xml").status(200).send(twiml);
-  } catch (e) {
+  } catch {
     res.status(500).send("error");
   }
 });
@@ -88,12 +97,17 @@ app.get("/twilio/voice", (req, res) => {
 /**
  * BLOCK HTTP ACCESS TO /media
  */
-app.get("/media", (_req, res) => res.status(426).send("WebSocket required"));
+app.get("/media", (_req, res) => {
+  res.status(426).send("WebSocket required");
+});
 
 /**
  * WEBSOCKET MEDIA STREAM
  */
-const wss = new WebSocketServer({ server, path: "/media" });
+const wss = new WebSocketServer({
+  server,
+  path: "/media",
+});
 
 wss.on("connection", (ws, req) => {
   console.log("Twilio media stream connected");
@@ -130,8 +144,8 @@ wss.on("connection", (ws, req) => {
     }
 
     if (data.event === "media") {
-      // inbound audio only, do nothing (we just prove we receive it)
       if (!data.media?.payload) return;
+      // Audio is flowing correctly
       return;
     }
 
@@ -154,7 +168,9 @@ wss.on("connection", (ws, req) => {
 });
 
 /**
- * START
+ * START SERVER
  */
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log("Listening on port", PORT));
+server.listen(PORT, () => {
+  console.log("Listening on port", PORT);
+});
