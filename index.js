@@ -5,6 +5,9 @@ import { WebSocketServer } from "ws";
 const app = express();
 const server = http.createServer(app);
 
+/**
+ * Twilio Media Stream (WSS)
+ */
 const wss = new WebSocketServer({
   server,
   path: "/media",
@@ -22,6 +25,28 @@ wss.on("connection", (ws) => {
   });
 });
 
+/**
+ * Voice webhook (HTTPS -> returns TwiML)
+ * THIS is what Twilio calls first
+ */
+app.post(
+  "/voice",
+  express.urlencoded({ extended: false }),
+  (req, res) => {
+    res.type("text/xml");
+    res.send(`
+<Response>
+  <Connect>
+    <Stream url="wss://${req.headers.host}/media" />
+  </Connect>
+</Response>
+    `.trim());
+  }
+);
+
+/**
+ * Health check
+ */
 app.get("/health", (req, res) => {
   res.send("ok");
 });
