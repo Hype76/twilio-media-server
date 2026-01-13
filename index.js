@@ -4,25 +4,33 @@ import WebSocket from "ws";
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
 
-wss.on("connection", (ws) => {
+// Health check
+app.get("/health", (req, res) => {
+  res.status(200).send("ok");
+});
+
+// WebSocket server (Twilio Media Streams)
+const wss = new WebSocket.Server({ server, path: "/media" });
+
+wss.on("connection", (ws, req) => {
   console.log("Twilio connected");
 
   ws.on("message", (msg) => {
-    console.log("audio frame");
+    // Twilio sends JSON frames
+    console.log("frame received");
   });
 
   ws.on("close", () => {
     console.log("Twilio disconnected");
   });
-});
 
-app.get("/health", (req, res) => {
-  res.send("ok");
+  ws.on("error", (err) => {
+    console.error("WebSocket error", err);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log("Listening on", PORT);
 });
