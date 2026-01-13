@@ -16,7 +16,7 @@ const wss = new WebSocketServer({
 wss.on("connection", (ws) => {
   console.log("Twilio connected");
 
-  ws.on("message", (msg) => {
+  ws.on("message", () => {
     console.log("audio frame");
   });
 
@@ -26,8 +26,7 @@ wss.on("connection", (ws) => {
 });
 
 /**
- * Voice webhook (HTTPS -> returns TwiML)
- * THIS is what Twilio calls first
+ * Voice webhook (HTTPS → returns TwiML)
  */
 app.post(
   "/voice",
@@ -50,22 +49,6 @@ app.post(
 app.get("/health", (req, res) => {
   res.send("ok");
 });
-
-import twilio from "twilio";
-
-app.post("/voice", (req, res) => {
-  const twiml = new twilio.twiml.VoiceResponse();
-
-  twiml.start().stream({
-    url: "wss://twilio-media-server-production.up.railway.app/media",
-  });
-
-  twiml.say("You are connected.");
-
-  res.type("text/xml");
-  res.send(twiml.toString());
-});
-
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
