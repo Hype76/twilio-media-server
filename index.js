@@ -38,7 +38,7 @@ app.post("/twilio/stream-status", (req, res) => {
 });
 
 /**
- * CALL STATUS CALLBACK (optional)
+ * CALL STATUS CALLBACK
  */
 app.post("/twilio/call-status", (req, res) => {
   console.log("[CALL-STATUS] body:", req.body);
@@ -61,7 +61,6 @@ function buildTwiml(req) {
   <Connect>
     <Stream
       url="${streamUrl}"
-      track="both"
       statusCallback="${statusCb}"
       statusCallbackMethod="POST" />
   </Connect>
@@ -145,7 +144,6 @@ wss.on("connection", (ws, req) => {
 
     if (data.event === "media") {
       if (!data.media?.payload) return;
-      // Audio is flowing correctly
       return;
     }
 
