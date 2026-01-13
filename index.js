@@ -6,40 +6,32 @@ const app = express();
 const server = http.createServer(app);
 
 /**
- * ---- CONFIG ----
- * Railway injects PORT automatically
- * PUBLIC_URL must be your Railway domain
- */
-const PORT = process.env.PORT || 8080;
-const PUBLIC_URL =
-  process.env.PUBLIC_URL ||
-  "twilio-media-server-production.up.railway.app";
-
-/**
- * ---- HEALTH CHECK ----
+ * 1️⃣ HEALTH CHECK
  */
 app.get("/health", (req, res) => {
   res.status(200).send("ok");
 });
 
 /**
- * ---- TWILIO VOICE WEBHOOK (TwiML) ----
- * This is what Twilio hits FIRST when a call comes in
+ * 2️⃣ TWILIO VOICE WEBHOOK (RETURNS TWIML)
+ * THIS is what your Twilio phone number must point to
  */
 app.post("/twilio/voice", (req, res) => {
+  const host = req.headers.host;
+
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="wss://${PUBLIC_URL}/media" />
+    <Stream url="wss://${host}/media" />
   </Connect>
 </Response>`;
 
-  res.set("Content-Type", "text/xml");
-  res.status(200).send(twiml);
+  res.type("text/xml");
+  res.send(twiml);
 });
 
 /**
- * ---- WEBSOCKET: TWILIO MEDIA STREAM ----
+ * 3️⃣ WEBSOCKET MEDIA STREAM
  */
 const wss = new WebSocketServer({
   server,
@@ -50,35 +42,22 @@ wss.on("connection", (ws) => {
   console.log("Twilio media stream connected");
 
   ws.on("message", (msg) => {
-    // Twilio sends JSON frames
-    try {
-      const data = JSON.parse(msg.toString());
-
-      if (data.event === "start") {
-        console.log("Stream started", data.start?.streamSid);
-      }
-
-      if (data.event === "media") {
-        // Audio payload is base64 μ-law
-        console.log("Audio frame received", data.media.payload.length);
-      }
-
-      if (data.event === "stop") {
-        console.log("Stream stopped");
-      }
-    } catch (err) {
-      console.error("Invalid WS message", err);
-    }
+    console.log("Audio frame received", msg.length);
   });
 
   ws.on("close", () => {
     console.log("Twilio media stream disconnected");
   });
+
+  ws.on("error", (err) => {
+    console.error("WebSocket error", err);
+  });
 });
 
 /**
- * ---- START SERVER ----
+ * 4️⃣ START SERVER
  */
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
   console.log(`Health: http://localhost:${PORT}/health`);
