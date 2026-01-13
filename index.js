@@ -1,11 +1,12 @@
 import express from "express";
 import http from "http";
-import WebSocket from "ws";
+import { WebSocketServer } from "ws";
 
 const app = express();
 const server = http.createServer(app);
 
-const wss = new WebSocket.Server({
+// IMPORTANT: correct ESM constructor
+const wss = new WebSocketServer({
   server,
   path: "/media",
 });
@@ -23,14 +24,13 @@ wss.on("connection", (ws) => {
 
     if (data.event === "start") {
       streamSid = data.start.streamSid;
-      console.log("Stream started", streamSid);
+      console.log("Stream started:", streamSid);
 
-      // Speak immediately so you hear something
       await speak(ws, streamSid, "Hello. I can hear you now.");
     }
 
     if (data.event === "media") {
-      // Audio is arriving from caller (ignored for now)
+      // audio frames arriving
     }
 
     if (data.event === "stop") {
