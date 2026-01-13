@@ -84,6 +84,18 @@ app.get("/health", (req, res) => {
   res.send("ok");
 });
 
+app.post("/twilio/voice", (req, res) => {
+  res.set("Content-Type", "text/xml");
+  res.send(`
+<Response>
+  <Connect>
+    <Stream url="wss://twilio-media-server-production.up.railway.app/media" />
+  </Connect>
+</Response>
+  `);
+});
+
+
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log("Listening on port", PORT);
