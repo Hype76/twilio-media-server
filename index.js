@@ -29,13 +29,14 @@ app.post("/twilio/voice", (req, res) => {
     <Stream url="${streamUrl}" />
   </Connect>
 
-  <!-- KEEP THE CALL OPEN -->
-  <Pause length="60" />
+  <Gather input="speech" speechTimeout="auto" timeout="60">
+    <Pause length="60"/>
+  </Gather>
 </Response>`;
 
-  res.set("Content-Type", "text/xml");
-  res.status(200).send(twiml);
+  res.type("text/xml").send(twiml);
 });
+
 
 
 /* -------------------- WEBSOCKET -------------------- */
