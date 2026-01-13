@@ -2,7 +2,6 @@ import express from "express";
 import http from "http";
 import { WebSocketServer } from "ws";
 import { Readable } from "node:stream";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
