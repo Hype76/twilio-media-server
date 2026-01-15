@@ -200,7 +200,7 @@ async function synthesizeWithElevenLabs(text) {
   const buffer = Buffer.from(await res.arrayBuffer());
   fs.writeFileSync(filePath, buffer);
 
-  return `https://YOUR-RAILWAY-DOMAIN/audio/${id}.mp3`;
+  return "https://twilio-media-server-production.up.railway.app/audio/${id}.mp3";
 }
 
 /**
