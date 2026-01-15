@@ -45,7 +45,7 @@ app.post("/twilio/voice", async (_req, res) => {
 <Response>
   <Gather
     input="speech"
-    action="/twilio/gather"
+    action="${BASE_URL}/twilio/gather"
     method="POST"
     speechTimeout="auto"
     record="record-from-answer">
@@ -53,7 +53,7 @@ app.post("/twilio/voice", async (_req, res) => {
   </Gather>
 
   <Pause length="1" />
-  <Redirect>/twilio/voice</Redirect>
+  <Redirect>${BASE_URL}/twilio/voice</Redirect>
 </Response>
 `.trim();
 
@@ -68,7 +68,7 @@ app.post("/twilio/voice", async (_req, res) => {
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Pause length="1" />
-  <Redirect>/twilio/voice</Redirect>
+  <Redirect>${BASE_URL}/twilio/voice</Redirect>
 </Response>
 `.trim()
       );
@@ -82,62 +82,50 @@ app.post("/twilio/gather", async (req, res) => {
   try {
     const recordingUrl = req.body?.RecordingUrl;
 
-    // NO SPEECH OR LOW CONFIDENCE
     if (!recordingUrl) {
-      const twiml = `
+      return res
+        .type("text/xml")
+        .status(200)
+        .send(
+          `
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Pause length="1" />
   <Gather
     input="speech"
-    action="/twilio/gather"
+    action="${BASE_URL}/twilio/gather"
     method="POST"
     speechTimeout="auto"
     record="record-from-answer" />
 </Response>
-`.trim();
-
-      return res.type("text/xml").status(200).send(twiml);
+`.trim()
+        );
     }
 
     const audioBuffer = await downloadTwilioRecording(recordingUrl);
     const transcript = await transcribeWithWhisper(audioBuffer);
 
     if (!transcript) {
-      const twiml = `
+      return res
+        .type("text/xml")
+        .status(200)
+        .send(
+          `
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Pause length="1" />
   <Gather
     input="speech"
-    action="/twilio/gather"
+    action="${BASE_URL}/twilio/gather"
     method="POST"
     speechTimeout="auto"
     record="record-from-answer" />
 </Response>
-`.trim();
-
-      return res.type("text/xml").status(200).send(twiml);
+`.trim()
+        );
     }
 
     const assistantText = await callOpenAI(transcript);
-    if (!assistantText) {
-      const twiml = `
-<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Pause length="1" />
-  <Gather
-    input="speech"
-    action="/twilio/gather"
-    method="POST"
-    speechTimeout="auto"
-    record="record-from-answer" />
-</Response>
-`.trim();
-
-      return res.type("text/xml").status(200).send(twiml);
-    }
-
     const audioUrl = await synthesizeWithElevenLabs(assistantText);
 
     const twiml = `
@@ -147,12 +135,10 @@ app.post("/twilio/gather", async (req, res) => {
 
   <Gather
     input="speech"
-    action="/twilio/gather"
+    action="${BASE_URL}/twilio/gather"
     method="POST"
     speechTimeout="auto"
     record="record-from-answer" />
-
-  <Pause length="1" />
 </Response>
 `.trim();
 
@@ -169,7 +155,7 @@ app.post("/twilio/gather", async (req, res) => {
   <Pause length="1" />
   <Gather
     input="speech"
-    action="/twilio/gather"
+    action="${BASE_URL}/twilio/gather"
     method="POST"
     speechTimeout="auto"
     record="record-from-answer" />
@@ -228,7 +214,7 @@ async function callOpenAI(userText) {
 
   if (!res.ok) return null;
   const json = await res.json();
-  return json.choices?.[0]?.message?.content?.trim() || null;
+  return json.choices?.[0]?.message?.content?.trim() || "";
 }
 
 async function synthesizeWithElevenLabs(text) {
