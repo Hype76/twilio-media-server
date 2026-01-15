@@ -8,9 +8,6 @@ const app = express();
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-/**
- * CONFIG
- */
 const PORT = process.env.PORT || 8080;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
@@ -18,184 +15,78 @@ const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
 
 const BASE_URL = "https://twilio-media-server-production.up.railway.app";
 
-/**
- * AUDIO CACHE
- */
 const AUDIO_DIR = path.join(process.cwd(), "audio");
 if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR);
 
-/**
- * HEALTH
- */
 app.get("/health", (_req, res) => {
   res.status(200).send("ok");
 });
 
 /**
- * TWILIO ENTRY POINT
+ * ENTRY POINT
  */
 app.post("/twilio/voice", async (_req, res) => {
-  try {
-    const greetingUrl = await synthesizeWithElevenLabs(
-      "Hello, how can I help you today?"
-    );
+  const greetingUrl = await synthesizeWithElevenLabs(
+    "Hello, how can I help you today?"
+  );
 
-    const twiml = `
+  res.type("text/xml").send(
+    `
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather
     input="speech"
     action="${BASE_URL}/twilio/gather"
     method="POST"
-    speechTimeout="auto"
-    record="record-from-answer">
+    speechTimeout="auto">
     <Play>${greetingUrl}</Play>
   </Gather>
-
-  <Pause length="1" />
-  <Redirect>${BASE_URL}/twilio/voice</Redirect>
-</Response>
-`.trim();
-
-    res.type("text/xml").status(200).send(twiml);
-  } catch (err) {
-    console.error("voice error:", err);
-    res
-      .type("text/xml")
-      .status(200)
-      .send(
-        `
-<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Pause length="1" />
-  <Redirect>${BASE_URL}/twilio/voice</Redirect>
 </Response>
 `.trim()
-      );
-  }
+  );
 });
 
 /**
- * HANDLE USER SPEECH
+ * HANDLE SPEECH RESULT
  */
 app.post("/twilio/gather", async (req, res) => {
-  try {
-    const recordingUrl = req.body?.RecordingUrl;
+  const userText = req.body?.SpeechResult;
 
-    if (!recordingUrl) {
-      return res
-        .type("text/xml")
-        .status(200)
-        .send(
-          `
-<?xml version="1.0" encoding="UTF-8"?>
+  if (!userText || userText.trim().length === 0) {
+    return res.type("text/xml").send(
+      `
 <Response>
-  <Pause length="1" />
   <Gather
     input="speech"
     action="${BASE_URL}/twilio/gather"
     method="POST"
-    speechTimeout="auto"
-    record="record-from-answer" />
+    speechTimeout="auto" />
 </Response>
 `.trim()
-        );
-    }
+    );
+  }
 
-    const audioBuffer = await downloadTwilioRecording(recordingUrl);
-    const transcript = await transcribeWithWhisper(audioBuffer);
+  const assistantText = await callOpenAI(userText);
+  const audioUrl = await synthesizeWithElevenLabs(assistantText);
 
-    if (!transcript) {
-      return res
-        .type("text/xml")
-        .status(200)
-        .send(
-          `
-<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Pause length="1" />
-  <Gather
-    input="speech"
-    action="${BASE_URL}/twilio/gather"
-    method="POST"
-    speechTimeout="auto"
-    record="record-from-answer" />
-</Response>
-`.trim()
-        );
-    }
-
-    const assistantText = await callOpenAI(transcript);
-    const audioUrl = await synthesizeWithElevenLabs(assistantText);
-
-    const twiml = `
+  res.type("text/xml").send(
+    `
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Play>${audioUrl}</Play>
-
   <Gather
     input="speech"
     action="${BASE_URL}/twilio/gather"
     method="POST"
-    speechTimeout="auto"
-    record="record-from-answer" />
-</Response>
-`.trim();
-
-    res.type("text/xml").status(200).send(twiml);
-  } catch (err) {
-    console.error("gather error:", err);
-    res
-      .type("text/xml")
-      .status(200)
-      .send(
-        `
-<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Pause length="1" />
-  <Gather
-    input="speech"
-    action="${BASE_URL}/twilio/gather"
-    method="POST"
-    speechTimeout="auto"
-    record="record-from-answer" />
+    speechTimeout="auto" />
 </Response>
 `.trim()
-      );
-  }
+  );
 });
 
 /**
- * HELPERS
+ * OPENAI
  */
-
-async function downloadTwilioRecording(url) {
-  const res = await fetch(`${url}.wav`);
-  return Buffer.from(await res.arrayBuffer());
-}
-
-async function transcribeWithWhisper(audioBuffer) {
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([audioBuffer], { type: "audio/wav" }),
-    "audio.wav"
-  );
-  form.append("model", "whisper-1");
-
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: form,
-  });
-
-  if (!res.ok) return null;
-  const json = await res.json();
-  return json.text?.trim() || null;
-}
-
 async function callOpenAI(userText) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -212,11 +103,13 @@ async function callOpenAI(userText) {
     }),
   });
 
-  if (!res.ok) return null;
   const json = await res.json();
-  return json.choices?.[0]?.message?.content?.trim() || "";
+  return json.choices[0].message.content;
 }
 
+/**
+ * ELEVENLABS
+ */
 async function synthesizeWithElevenLabs(text) {
   const id = crypto.randomUUID();
   const filePath = path.join(AUDIO_DIR, `${id}.mp3`);
@@ -242,14 +135,8 @@ async function synthesizeWithElevenLabs(text) {
   return `${BASE_URL}/audio/${id}.mp3`;
 }
 
-/**
- * STATIC AUDIO
- */
 app.use("/audio", express.static(AUDIO_DIR));
 
-/**
- * START SERVER
- */
 http.createServer(app).listen(PORT, () => {
   console.log("Listening on", PORT);
 });
