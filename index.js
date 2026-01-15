@@ -16,6 +16,8 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID;
 
+const BASE_URL = "https://twilio-media-server-production.up.railway.app";
+
 /**
  * AUDIO CACHE
  */
@@ -49,6 +51,9 @@ app.post("/twilio/voice", async (_req, res) => {
     record="record-from-answer">
     <Play>${greetingUrl}</Play>
   </Gather>
+
+  <Pause length="1" />
+  <Redirect>/twilio/voice</Redirect>
 </Response>
 `.trim();
 
@@ -61,7 +66,10 @@ app.post("/twilio/voice", async (_req, res) => {
       .send(
         `
 <?xml version="1.0" encoding="UTF-8"?>
-<Response></Response>
+<Response>
+  <Pause length="1" />
+  <Redirect>/twilio/voice</Redirect>
+</Response>
 `.trim()
       );
   }
@@ -74,20 +82,60 @@ app.post("/twilio/gather", async (req, res) => {
   try {
     const recordingUrl = req.body?.RecordingUrl;
 
+    // NO SPEECH OR LOW CONFIDENCE
     if (!recordingUrl) {
-      return res.type("text/xml").send(emptyGather());
+      const twiml = `
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Pause length="1" />
+  <Gather
+    input="speech"
+    action="/twilio/gather"
+    method="POST"
+    speechTimeout="auto"
+    record="record-from-answer" />
+</Response>
+`.trim();
+
+      return res.type("text/xml").status(200).send(twiml);
     }
 
     const audioBuffer = await downloadTwilioRecording(recordingUrl);
     const transcript = await transcribeWithWhisper(audioBuffer);
 
     if (!transcript) {
-      return res.type("text/xml").send(emptyGather());
+      const twiml = `
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Pause length="1" />
+  <Gather
+    input="speech"
+    action="/twilio/gather"
+    method="POST"
+    speechTimeout="auto"
+    record="record-from-answer" />
+</Response>
+`.trim();
+
+      return res.type("text/xml").status(200).send(twiml);
     }
 
     const assistantText = await callOpenAI(transcript);
     if (!assistantText) {
-      return res.type("text/xml").send(emptyGather());
+      const twiml = `
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Pause length="1" />
+  <Gather
+    input="speech"
+    action="/twilio/gather"
+    method="POST"
+    speechTimeout="auto"
+    record="record-from-answer" />
+</Response>
+`.trim();
+
+      return res.type("text/xml").status(200).send(twiml);
     }
 
     const audioUrl = await synthesizeWithElevenLabs(assistantText);
@@ -96,30 +144,29 @@ app.post("/twilio/gather", async (req, res) => {
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Play>${audioUrl}</Play>
+
   <Gather
     input="speech"
     action="/twilio/gather"
     method="POST"
     speechTimeout="auto"
     record="record-from-answer" />
+
+  <Pause length="1" />
 </Response>
 `.trim();
 
     res.type("text/xml").status(200).send(twiml);
   } catch (err) {
     console.error("gather error:", err);
-    res.type("text/xml").send(emptyGather());
-  }
-});
-
-/**
- * HELPERS
- */
-
-function emptyGather() {
-  return `
+    res
+      .type("text/xml")
+      .status(200)
+      .send(
+        `
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Pause length="1" />
   <Gather
     input="speech"
     action="/twilio/gather"
@@ -127,8 +174,14 @@ function emptyGather() {
     speechTimeout="auto"
     record="record-from-answer" />
 </Response>
-`.trim();
-}
+`.trim()
+      );
+  }
+});
+
+/**
+ * HELPERS
+ */
 
 async function downloadTwilioRecording(url) {
   const res = await fetch(`${url}.wav`);
@@ -200,7 +253,7 @@ async function synthesizeWithElevenLabs(text) {
   const buffer = Buffer.from(await res.arrayBuffer());
   fs.writeFileSync(filePath, buffer);
 
-  return `https://twilio-media-server-production.up.railway.app/audio/${id}.mp3`;
+  return `${BASE_URL}/audio/${id}.mp3`;
 }
 
 /**
