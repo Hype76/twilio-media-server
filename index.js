@@ -2,9 +2,7 @@ import express from "express";
 import http from "http";
 import fs from "fs";
 import path from "path";
-import fetch from "node-fetch";
 import crypto from "crypto";
-import FormData from "form-data";
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -127,7 +125,11 @@ async function downloadTwilioRecording(url) {
 
 async function transcribeWithWhisper(audioBuffer) {
   const form = new FormData();
-  form.append("file", audioBuffer, "audio.wav");
+  form.append(
+    "file",
+    new Blob([audioBuffer], { type: "audio/wav" }),
+    "audio.wav"
+  );
   form.append("model", "whisper-1");
 
   const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
