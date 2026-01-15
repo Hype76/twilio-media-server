@@ -32,8 +32,13 @@ app.get("/health", (_req, res) => {
 /**
  * TWILIO ENTRY POINT
  */
-app.post("/twilio/voice", (_req, res) => {
-  const twiml = `
+app.post("/twilio/voice", async (_req, res) => {
+  try {
+    const greetingUrl = await synthesizeWithElevenLabs(
+      "Hello, how can I help you today?"
+    );
+
+    const twiml = `
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather
@@ -42,12 +47,24 @@ app.post("/twilio/voice", (_req, res) => {
     method="POST"
     speechTimeout="auto"
     record="record-from-answer">
-    <Play>${buildGreetingAudio()}</Play>
+    <Play>${greetingUrl}</Play>
   </Gather>
 </Response>
 `.trim();
 
-  res.type("text/xml").status(200).send(twiml);
+    res.type("text/xml").status(200).send(twiml);
+  } catch (err) {
+    console.error("voice error:", err);
+    res
+      .type("text/xml")
+      .status(200)
+      .send(
+        `
+<?xml version="1.0" encoding="UTF-8"?>
+<Response></Response>
+`.trim()
+      );
+  }
 });
 
 /**
@@ -111,11 +128,6 @@ function emptyGather() {
     record="record-from-answer" />
 </Response>
 `.trim();
-}
-
-function buildGreetingAudio() {
-  // MUST be a publicly accessible ElevenLabs MP3
-  return "https://your-domain.com/static/greeting.mp3";
 }
 
 async function downloadTwilioRecording(url) {
@@ -188,7 +200,7 @@ async function synthesizeWithElevenLabs(text) {
   const buffer = Buffer.from(await res.arrayBuffer());
   fs.writeFileSync(filePath, buffer);
 
-  return `https://your-domain.com/audio/${id}.mp3`;
+  return `https://YOUR-RAILWAY-DOMAIN/audio/${id}.mp3`;
 }
 
 /**
